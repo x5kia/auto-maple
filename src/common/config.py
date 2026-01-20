@@ -1,45 +1,20 @@
-"""A collection of variables shared across multiple modules."""
+"""
+全域變數模組：儲存多個模組之間共享的變數。
+"""
 
+# --- 常數設定 ---
+RESOURCES_DIR = 'resources'  # 資源資料夾路徑
 
-#########################
-#       Constants       #
-#########################
-RESOURCES_DIR = 'resources'
+# --- 即時狀態變數 ---
+player_pos = (0, 0)    # 玩家目前在小地圖上的座標 (x, y)
+enabled = False        # 腳本開關狀態：True 代表正在運行，False 代表停止
+stage_fright = False   # 「舞台恐懼」狀態：當地圖有其他玩家時，會切換到隨機防測模式
+path = []              # 機器人目前計畫行走的移動路徑點清單
 
-
-#################################
-#       Global Variables        #
-#################################
-# The player's position relative to the minimap
-player_pos = (0, 0)
-
-# Describes whether the main bot loop is currently running or not
-enabled = False
-
-# If there is another player in the map, Auto Maple will purposely make random human-like mistakes
-stage_fright = False
-
-# Represents the current shortest path that the bot is taking
-path = []
-
-
-#############################
-#       Shared Modules      #
-#############################
-# A Routine object that manages the 'machine code' of the current routine
-routine = None
-
-# Stores the Layout object associated with the current routine
-layout = None
-
-# Shares the main bot loop
-bot = None
-
-# Shares the video capture loop
-capture = None
-
-# Shares the keyboard listener
-listener = None
-
-# Shares the gui to all modules
-gui = None
+# --- 核心物件引用 (由各模組初始化) ---
+routine = None         # 目前載入的「腳本」物件
+layout = None          # 目前地圖的「地形佈局」資料
+bot = None             # 機器人執行邏輯核心
+capture = None         # 畫面擷取與影像處理核心
+listener = None        # 鍵盤監聽器（處理快捷鍵）
+gui = None             # 圖形化介面物件
