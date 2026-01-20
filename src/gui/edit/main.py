@@ -1,5 +1,6 @@
 """
-腳本編輯頁面：允許使用者編輯點位並在小地圖上查看位置。
+[編輯介面模組]
+這裡允許使用者在介面上直接修改腳本的參數，或是新增動作。
 """
 
 from src.common import config
@@ -15,7 +16,7 @@ from src.gui.interfaces import Tab, Frame, LabelFrame
 
 class Edit(Tab):
     def __init__(self, parent, **kwargs):
-        super().__init__(parent, '編輯腳本', **kwargs) # 分頁名稱改為中文
+        super().__init__(parent, '編輯腳本 (Edit)', **kwargs) # 分頁名稱
 
         self.columnconfigure(0, weight=1)
         self.columnconfigure(4, weight=1)
@@ -38,7 +39,7 @@ class Edit(Tab):
 
 class Editor(LabelFrame):
     def __init__(self, parent, **kwargs):
-        super().__init__(parent, '編輯器', **kwargs)
+        super().__init__(parent, '參數編輯器', **kwargs) # 區塊標題
 
         self.columnconfigure(0, minsize=350)
 
@@ -47,7 +48,7 @@ class Editor(LabelFrame):
         self.create_default_state()
 
     def reset(self):
-        """重設編輯器介面"""
+        """重置編輯器回到預設狀態"""
         self.contents.destroy()
         self.create_default_state()
 
@@ -58,10 +59,37 @@ class Editor(LabelFrame):
 
         title = tk.Entry(self.contents, justify=tk.CENTER)
         title.pack(expand=True, fill='x', pady=(5, 2))
-        title.insert(0, '尚未選擇任何項目') # 提示文字中文化
+        title.insert(0, '尚未選擇任何項目') # 中文提示
         title.config(state=tk.DISABLED)
 
         self.create_disabled_entry()
+
+    def create_disabled_entry(self):
+        row = Frame(self.contents, highlightthickness=0)
+        row.pack(expand=True, fill='x')
+
+        label = tk.Entry(row)
+        label.pack(side=tk.LEFT, expand=True, fill='x')
+        label.config(state=tk.DISABLED)
+
+        entry = tk.Entry(row)
+        entry.pack(side=tk.RIGHT, expand=True, fill='x')
+        entry.config(state=tk.DISABLED)
+
+    def create_entry(self, key, value):
+        """建立單一參數的輸入框"""
+        self.vars[key] = tk.StringVar(value=str(value))
+
+        row = Frame(self.contents, highlightthickness=0)
+        row.pack(expand=True, fill='x')
+
+        label = tk.Entry(row)
+        label.pack(side=tk.LEFT, expand=True, fill='x')
+        label.insert(0, key)
+        label.config(state=tk.DISABLED)
+
+        entry = tk.Entry(row, textvariable=self.vars[key])
+        entry.pack(side=tk.RIGHT, expand=True, fill='x')
 
     def create_edit_ui(self, arr, i, func):
         """建立編輯現有組件的介面"""
@@ -72,17 +100,18 @@ class Editor(LabelFrame):
 
         title = tk.Entry(self.contents, justify=tk.CENTER)
         title.pack(expand=True, fill='x', pady=(5, 2))
-        title.insert(0, f"正在編輯：{arr[i].__class__.__name__}")
+        title.insert(0, f"正在編輯：{arr[i].__class__.__name__}") # 顯示目前編輯的物件名稱
         title.config(state=tk.DISABLED)
 
         if len(arr[i].kwargs) > 0:
             for key, value in arr[i].kwargs.items():
                 self.create_entry(key, value)
-            button = tk.Button(self.contents, text='儲存變更', command=func(arr, i, self.vars)) # 確定按鈕中文化
+            button = tk.Button(self.contents, text='儲存變更', command=func(arr, i, self.vars)) # 中文按鈕
             button.pack(pady=5)
         else:
             self.create_disabled_entry()
 
+  
     def create_add_prompt(self):
         """建立搜尋與新增組件的介面"""
         self.contents.destroy()
@@ -216,10 +245,10 @@ class Editor(LabelFrame):
         controls = Frame(self.contents)
         controls.pack(expand=True, fill='x')
 
-        add_button = tk.Button(controls, text='Add', command=self.add(component))
+        add_button = tk.Button(controls, text='新增', command=self.add(component))
         if sticky:          # Only create 'cancel' button if stickied
             add_button.pack(side=tk.RIGHT, pady=5)
-            cancel_button = tk.Button(controls, text='Cancel', command=self.cancel, takefocus=False)
+            cancel_button = tk.Button(controls, text='取消', command=self.cancel, takefocus=False)
             cancel_button.pack(side=tk.LEFT, pady=5)
         else:
             add_button.pack(pady=5)
@@ -249,14 +278,14 @@ class Editor(LabelFrame):
                             self.parent.routine.commands.update_display()
                             self.cancel()
                         else:
-                            print(f"\n[!] Error while adding Command: currently selected Component is not a Point.")
+                            print(f"\n[!] 新增指令時發生錯誤：目前選定的元件不是座標。.")
                     else:
-                        print(f"\n[!] Error while adding Command: no Point is currently selected.")
+                        print(f"\n[!]新增指令時出錯：目前未選擇任何座標。")
                 else:
                     config.routine.append_component(obj)
                     self.cancel()
             except (ValueError, TypeError) as e:
-                print(f"\n[!] Found invalid arguments for '{component.__name__}':")
+                print(f"\n[!] 發現無效參數for '{component.__name__}':")
                 print(f"{' ' * 4} -  {e}")
         return f
 
