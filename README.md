@@ -15,7 +15,7 @@ Auto Maple 是一款智慧型 Python AI，專門為 2D 橫向捲軸 MMORPG《楓
 <table align="center" border="0">
   <tr>
     <td>
-Auto Maple 使用 <b>OpenCV 範本匹配</b> 技術來確定小地圖的邊界以及其中的各種元素，從而精準追蹤玩家在遊戲中的位置。如果將 <code>record_layout</code> (紀錄地形) 設定為 <code>True</code>，Auto Maple 會將玩家之前的座標記錄在一個基於 <b>四元樹 (Quadtree)</b> 的地形物件中，並定期儲存至「layouts」目錄。每當載入新腳本時，對應的地形檔案（若存在）也會被自動載入。該地形物件使用 <b>A* 搜尋演算法</b> 來計算玩家到目標位置的最短路徑，這能顯著提高執行腳本的速度與準確性。
+Auto Maple 使用 <b>OpenCV 範本匹配</b> 技術來確定小地圖的邊界以及其中的各種元素，從而精準追蹤玩家在遊戲中的位置。如果將 <code>record_layout</code> (紀錄地形) 設定為 <code>True</code>，Auto Maple 會將玩家之前的座標記錄在一個基於 <b>四元樹 (Quadtree)</b> 的地形物件中。程式會利用 <b>A* 搜尋演算法</b> 來計算玩家到目標位置的最短路徑，這能顯著提高執行腳本的速度與準確性。
     </td>
     <td align="center" width="400px">
       <img align="center" src="https://user-images.githubusercontent.com/69165598/123177212-b16f0700-d439-11eb-8a21-8b414273f1e1.gif"/>
@@ -40,7 +40,7 @@ Auto Maple 使用 <b>OpenCV 範本匹配</b> 技術來確定小地圖的邊界�
 <table align="center" border="0">
   <tr>
     <td width="100%">
-本程式採用模組化設計，只要提供「指令書」，Auto Maple 就能操作遊戲中的任何角色。指令書是一個 Python 檔案，包含多個類別（代表不同的遊戲技能），定義了應按下的按鍵及時機。指令書一旦匯入，其內容會自動編譯成字典，供程式解讀腳本中的命令。指令可以直接存取 Auto Maple 的全域變數，從而根據玩家位置與遊戲狀態改變行為。
+本程式採用模組化設計，只要提供「指令書」，Auto Maple 就能操作遊戲中的任何角色。指令書是一個 Python 檔案，包含多個類別（代表不同的遊戲技能），定義了應按下的按鍵及時機。指令可以直接存取 Auto Maple 的全域變數，從而根據玩家位置與遊戲狀態改變行為。
     </td>
   </tr>
 </table>
@@ -63,32 +63,21 @@ Auto Maple 使用 <b>OpenCV 範本匹配</b> 技術來確定小地圖的邊界�
       </p>
     </td>
     <td>
-腳本是一個由使用者建立的 CSV 檔案，用來告訴 Auto Maple 在每個地點應如何移動及使用哪些指令。內建的編譯器會解析 CSV 並將其轉換為 <code>Component</code> 物件清單以供執行。若某行包含無效參數，程式會印出錯誤訊息並忽略該行。
+腳本是一個由使用者建立的 CSV 檔案，用來告訴 Auto Maple 在每個地點應如何移動及使用哪些指令。內建的編譯器會解析 CSV 並將其轉換為可執行的物件清單。
 <br><br>
 以下是常用的腳本組件摘要：
 <ul>
   <li>
-    <b><code>Point (座標點)</code></b>：儲存其下方的指令，並在角色進入 <code>move_tolerance</code> (移動誤差範圍) 時執行。可選參數包括：
-    <ul>
-      <li>
-        <code>adjust</code>：在執行指令前，精細調整位置至 <code>adjust_tolerance</code> 範圍內。
-      </li>
-      <li>
-        <code>frequency</code>：設定執行頻率。若設為 N，則每隔 N 次循環執行一次。
-      </li>
-      <li>
-        <code>skip</code>：設定是否跳過第一次循環。
-      </li>
-    </ul>
+    <b><code>Point (座標點)</code></b>：角色進入誤差範圍時執行其下方的指令。支援 <code>adjust</code> (精細微調)、<code>frequency</code> (執行頻率) 等設定。
   </li>
   <li>
-    <b><code>Label (標籤)</code></b>：作為參考點，用於組織腳本區塊或建立迴圈。
+    <b><code>Label (標籤)</code></b>：用於組織腳本區塊或建立迴圈的參考點。
   </li>
   <li>
-    <b><code>Jump (跳轉)</code></b>：從腳本中任何位置跳轉到指定的標籤。
+    <b><code>Jump (跳轉)</code></b>：直接跳轉到指定的標籤位置執行。
   </li>
   <li>
-    <b><code>Setting (設定)</code></b>：動態更新特定設定值。可放置於腳本任何位置以改變行為。
+    <b><code>Setting (設定)</code></b>：動態更新特定設定值（如移動誤差範圍）。
   </li>
 </ul>
     </td>
@@ -108,10 +97,43 @@ Auto Maple 使用 <b>OpenCV 範本匹配</b> 技術來確定小地圖的邊界�
 <table align="center" border="0">
   <tr>
     <td width="100%">
-Auto Maple 能夠自動破解遊戲中的「輪」箭頭謎題。它首先使用 OpenCV 的顏色過濾與 <b>Canny 邊緣檢測</b> 演算法來分離箭頭並減少背景雜訊。接著，使用預先訓練好的 <b>TensorFlow</b> 模型對影像進行多次推論，直到辨識結果達成一致為止。這使得程式在各種複雜且混亂的遊戲環境中都能極其準確地解開輪謎題。
+Auto Maple 能夠自動破解遊戲中的「輪」箭頭謎題。它首先使用 OpenCV 分離箭頭並減少雜訊，接著使用預先訓練好的 <b>TensorFlow</b> 模型進行推論，確保在混亂的環境中也能準確解題。
     </td>
   </tr>
 </table>
+
+<br>
+
+<h2 align="center">
+  環境架設與快速啟動
+</h2>
+
+對於完全沒有程式經驗的新手，請按照以下步驟操作：
+
+<ol>
+  <li>
+    下載並安裝 <a href="https://www.python.org/downloads/">Python 3</a>。
+  </li>
+  <li>
+    下載並安裝最新版本的 <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a> (用於 AI 加速)。
+  </li>
+  <li>
+    下載並解壓縮最新版本的 <a href="https://github.com/tanjeffreyz02/auto-maple/releases">Auto Maple 釋出檔</a>。
+  </li>
+  <li>
+    下載 <a href="https://drive.google.com/drive/folders/1SPdTNF4KZczoWyWTgfyTBRvLvy7WSGpu?usp=sharing">TensorFlow 模型</a> 並將「models」資料夾放進 <code>assets</code> 目錄中。
+  </li>
+  <li>
+    <b>無腦啟動法：</b> 在程式主目錄下建立一個名為 <code>啟動程式.bat</code> 的檔案，並貼入以下內容，以後只需點兩下即可執行：
+  </li>
+</ol>
+
+<pre><code>@echo off
+echo [第一步] 正在自動安裝所需的 Python 工具...
+python -m pip install -r requirements.txt
+echo [第二步] 正在啟動程式...
+python main.py
+pause</code></pre>
 
 <br>
 
@@ -128,36 +150,3 @@ Auto Maple 能夠自動破解遊戲中的「輪」箭頭謎題。它首先使用
     <img src="https://user-images.githubusercontent.com/69165598/123308656-c5b61100-d4d8-11eb-99ac-c465665474b5.gif" width="600px"/>
   </a>
 </p>
-
-<br>
-
-<h2 align="center">
-  環境架設 (新手教學)
-</h2>
-
-<ol>
-  <li>
-    下載並安裝 <a href="https://www.python.org/downloads/">Python 3</a>。
-  </li>
-  <li>
-    下載並安裝最新版本的 <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a>。
-  </li>
-  <li>
-    下載並安裝 <a href="https://git-scm.com/download/win">Git</a>。
-  </li>
-  <li>
-    下載並解壓縮最新版本的 <a href="https://github.com/tanjeffreyz02/auto-maple/releases">Auto Maple 釋出檔</a>。
-  </li>
-  <li>
-    下載 <a href="https://drive.google.com/drive/folders/1SPdTNF4KZczoWyWTgfyTBRvLvy7WSGpu?usp=sharing">TensorFlow 模型</a> 並將其解壓後的「models」資料夾放進 Auto Maple 的「assets」目錄中。
-  </li>
-  <li>
-    在 Auto Maple 主目錄下打開命令提示字元並執行：
-    <pre><code>python -m pip install -r requirements.txt</code></pre>
-  </li>
-  <li>
-    最後，執行以下指令建立桌面快捷方式：
-    <pre><code>python setup.py</code></pre>
-    該快捷方式使用絕對路徑，因此您可以將其移動到任何地方。若您搬移了程式主目錄，則需重新執行 <code>setup.py</code>。
-  </li>
-</ol>
