@@ -1,127 +1,122 @@
 """
 [視覺辨識模組]
-這個模組負責使用 TensorFlow 和 OpenCV 來辨識畫面中的物件，
-特別是用來解決遊戲中的「輪」(Rune) 箭頭謎題。
+這個模組負責載入由 tools/rune_trainer 訓練出來的 Keras 模型，
+並對遊戲畫面進行即時推論。
+
+整合重點：
+1. 保持與訓練時一致的影像預處理 (灰階 -> 二值化 -> 去噪)。
+2. 使用 TensorFlow Keras 介面載入 .h5 模型。
 """
 
 import cv2
 import tensorflow as tf
 import numpy as np
 from src.common import utils
+from skimage import morphology  # 需要安裝 scikit-image: pip install scikit-image
+
+#########################
+#       常數設定        #
+#########################
+# 設定模型路徑，這裡對應到 tools/rune_trainer 訓練出的模型
+MODEL_PATH = 'assets/models/arrow_model.h5'
+
+# 這是模型訓練時定義的輸入大小 (60x60)
+INPUT_SHAPE = (60, 60, 1)
+
+# 對應的類別標籤 (必須與 common.py 中的 CLASSES 一致)
+CLASSES = ['down', 'left', 'right', 'up']
 
 
 #########################
-#       功能函式        #
+#       核心功能        #
 #########################
 def load_model():
     """
-    載入已儲存的 AI 模型權重到 Tensorflow 模型中。
-    :return:    Tensorflow 模型物件。
+    載入 .h5 格式的 Keras 模型。
     """
+    try:
+        print(f"[~] 正在從 {MODEL_PATH} 載入模型...")
+        model = tf.keras.models.load_model(MODEL_PATH)
+        return model
+    except Exception as e:
+        print(f"[!] 模型載入失敗，請確認路徑或是否已訓練模型。錯誤: {e}")
+        return None
 
-    model_dir = f'assets/models/rune_model_rnn_filtered_cannied/saved_model'
-    return tf.saved_model.load(model_dir)
 
-
-def canny(image):
+def preprocess_image(image):
     """
-    對圖片執行 Canny 邊緣檢測。
-    這會把圖片變成只有線條的樣子，幫助 AI 更容易辨識形狀。
-    :param image:   輸入的圖片 (Numpy 陣列)。
-    :return:        處理後的邊緣圖片。
+    [影像預處理]
+    這部分的邏輯必須與 tools/rune_trainer/preprocessing/preprocess.py 完全一致。
+    步驟：高斯模糊 -> 轉 HSV -> 灰階化 -> 自適應二值化 -> 去噪。
     """
+    # 1. 高斯模糊 (Gaussian Blur)
+    img = cv2.GaussianBlur(image, (3, 3), 0)
 
-    image = cv2.Canny(image, 200, 300)
-    colored = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    return colored
+    # 2. 顏色轉換 (Color Transform) -> HSV
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    # 3. 自定義灰階轉換 (根據訓練專案的參數)
+    # coefficients = (h, s, v)
+    coefficients = (0.0445, 0.6568, 0.2987)
+    img = cv2.transform(img, np.array(coefficients).reshape((1, 3)))
+
+    # 4. 二值化 (Binarization)
+    img = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                cv2.THRESH_BINARY, 5, -1)
+
+    # 5. 去噪 (Denoise)
+    # 將圖片轉為布林值矩陣進行形態學操作
+    processed = img > 0
+    
+    # 移除小物件 (雜訊)
+    processed = morphology.remove_small_objects(processed, min_size=8, connectivity=2)
+    # 移除小孔洞
+    processed = morphology.remove_small_holes(processed, area_threshold=8, connectivity=2)
+
+    # 轉回 uint8 格式 (0 或 255)
+    result_img = np.zeros_like(img, dtype=np.uint8)
+    result_img[processed] = 255
+    
+    return result_img
 
 
-def filter_color(image):
+def run_inference(model, image):
     """
-    過濾掉不是橘色到綠色之間的顏色 (HSV 色彩空間)。
-    這可以消除箭頭周圍的背景雜訊，讓箭頭更明顯。
-    :param image:   輸入的圖片。
-    :return:        過濾顏色後的圖片。
+    對單張裁切好的箭頭圖片進行推論。
     """
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, (1, 100, 100), (75, 255, 255))
-
-    # 遮罩圖片 (只保留符合顏色的部分)
-    color_mask = mask > 0
-    arrows = np.zeros_like(image, np.uint8)
-    arrows[color_mask] = image[color_mask]
-    return arrows
-
-
-def run_inference_for_single_image(model, image):
-    """
-    對單張圖片執行一次推論 (Inference)。
-    也就是讓 AI 看這張圖，然後猜它是什麼。
-    :param model:   要使用的模型物件。
-    :param image:   輸入的圖片。
-    :return:        模型的預測結果，包含邊界框 (bounding boxes) 和類別 (classes)。
-    """
-
-    image = np.asarray(image)
-
-    input_tensor = tf.convert_to_tensor(image)
-    input_tensor = input_tensor[tf.newaxis,...]
-
-    model_fn = model.signatures['serving_default']
-    output_dict = model_fn(input_tensor)
-
-    num_detections = int(output_dict.pop('num_detections'))
-    output_dict = {key: value[0,:num_detections].numpy() 
-                   for key, value in output_dict.items()}
-    output_dict['num_detections'] = num_detections
-    output_dict['detection_classes'] = output_dict['detection_classes'].astype(np.int64)
-    return output_dict
-
-
-def sort_by_confidence(model, image):
-    """
-    對圖片執行一次推論，並回傳信心度最高的四個分類結果。
-    :param model:   要使用的模型物件。
-    :param image:   輸入的圖片。
-    :return:        模型的前四名預測結果。
-    """
-
-    output_dict = run_inference_for_single_image(model, image)
-    zipped = list(zip(output_dict['detection_scores'],
-                      output_dict['detection_boxes'],
-                      output_dict['detection_classes']))
-    # 過濾掉信心度低於 0.5 (50%) 的結果
-    pruned = [t for t in zipped if t[0] > 0.5]
-    # 依照信心度由高到低排序
-    pruned.sort(key=lambda x: x[0], reverse=True)
-    # 取前四個結果 (因為輪通常有四個箭頭)
-    result = pruned[:4]
-    return result
-
-
-def get_boxes(model, image):
-    """
-    回傳前四個被分類出的箭頭的邊界框 (Bounding Boxes)。
-    這可以用來定位箭頭在圖片中的位置。
-    :param model:   要使用的模型物件。
-    :param image:   輸入的圖片。
-    :return:        最多四個邊界框。
-    """
-
-    output_dict = run_inference_for_single_image(model, image)
-    zipped = list(zip(output_dict['detection_scores'],
-                      output_dict['detection_boxes'],
-                      output_dict['detection_classes']))
-    pruned = [t for t in zipped if t[0] > 0.5]
-    pruned.sort(key=lambda x: x[0], reverse=True)
-    pruned = pruned[:4]
-    boxes = [t[1:] for t in pruned]
-    return boxes
+    # 執行預處理
+    processed_img = preprocess_image(image)
+    
+    # 調整形狀以符合模型輸入 (Batch Size, Width, Height, Channels)
+    # reshape(1, 60, 60, 1)
+    data = np.reshape(processed_img, (1, ) + INPUT_SHAPE)
+    
+    # 讓模型預測
+    prediction = model.predict(data)
+    
+    # 取得信心度最高的類別索引
+    class_index = np.argmax(prediction)
+    confidence = np.max(prediction)
+    
+    return CLASSES[class_index], confidence
 
 
 @utils.run_if_enabled
-def merge_detection(model, image):
+def merge_detection(model, frame):
+    """
+    [主偵測邏輯]
+    掃描畫面，找出輪的箭頭並回傳方向列表。
+    
+    注意：原本的 detection.py 是用 Canny 邊緣檢測來找箭頭位置。
+    如果要完全整合，我們需要先「定位」出箭頭在哪裡，然後裁切下來給模型看。
+    這裡我們保留原本的定位邏輯概念，但改用模型來分類。
+    """
+    
+    # 這裡簡化流程：假設我們已經透過某種方式(例如原本的 find_contours) 切割出了四個箭頭的圖片
+    # 實務上，你需要結合 capture.py 的定位邏輯將畫面裁切成四個 60x60 的小圖
+    # 下面的 code 是一個示意，實際運作需要配合你的截圖座標
+
+      solution = []
     """
     執行兩次推論：一次是原本的直立圖片，一次是旋轉 90 度的圖片。
     只考慮垂直方向的箭頭，並將兩次推論的結果合併。
@@ -190,6 +185,19 @@ def merge_detection(model, image):
                 classes[i] = rotated_classes.pop(0)
 
     return classes
+# 假設我們已經知道輪出現的大概區域 (這部分依賴原本的定位算法)
+    # 這裡為了示範，我們先回傳空值，等待你將定位邏輯接上
+    # 你需要將裁切下來的 'arrow_img' 傳入 run_inference
+    
+    # 範例邏輯 (虛擬碼):
+    # arrows = locate_arrows(frame) # 這是原本專案找圓圈/輪廓的邏輯
+    # for arrow_img in arrows:
+    #     direction, conf = run_inference(model, arrow_img)
+    #     if conf > 0.8:
+    #         solution.append(direction)
+            
+    return solution
+
 
 
 # 用來單獨測試偵測模組的腳本
