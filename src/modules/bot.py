@@ -22,86 +22,59 @@ from src.common.interfaces import Configurable
 RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 0)
 
 
+"""
+機器人核心：這是程式的「行動中心」，負責讀取你的指令並在遊戲中執行。
+"""
+# ... (前面引入部分保持不變)
+
 class Bot(Configurable):
-    """A class that interprets and executes user-defined routines."""
-
+    # 預設按鍵設定
     DEFAULT_CONFIG = {
-        'Interact': 'y',
-        'Feed pet': '9'
+        'Interact': 'y',  # 與 NPC 或輪互動的按鍵
+        'Feed pet': '9'   # 餵食寵物的快捷鍵
     }
-
-    def __init__(self):
-        """Loads a user-defined routine on start up and initializes this Bot's main thread."""
-
-        super().__init__('keybindings')
-        config.bot = self
-
-        self.rune_active = False
-        self.rune_pos = (0, 0)
-        self.rune_closest_pos = (0, 0)      # Location of the Point closest to rune
-        self.submodules = []
-        self.command_book = None            # CommandBook instance
-        # self.module_name = None
-        # self.buff = components.Buff()
-
-        # self.command_book = {}
-        # for c in (components.Wait, components.Walk, components.Fall,
-        #           components.Move, components.Adjust, components.Buff):
-        #     self.command_book[c.__name__.lower()] = c
-
-        config.routine = Routine()
-
-        self.ready = False
-        self.thread = threading.Thread(target=self._main)
-        self.thread.daemon = True
-
-    def start(self):
-        """
-        Starts this Bot object's thread.
-        :return:    None
-        """
-
-        self.update_submodules()
-        print('\n[~] Started main bot loop')
-        self.thread.start()
 
     def _main(self):
         """
-        The main body of Bot that executes the user's routine.
-        :return:    None
+        這是程式的主要運行循環。
         """
-
-        print('\n[~] Initializing detection algorithm:\n')
+        # 第一步：載入 AI 偵測大腦 (辨識箭頭用的)
         model = detection.load_model()
-        print('\n[~] Initialized detection algorithm')
-
+        
         self.ready = True
-        config.listener.enabled = True
-        last_fed = time.time()
+        last_fed = time.time()  # 紀錄上次餵食時間
+
         while True:
+            # 只有在「程式啟動中」且「腳本內有動作」時才執行動作
             if config.enabled and len(config.routine) > 0:
-                # Buff and feed pets
+                
+                # 1. 執行自動放招 (Buff)
                 self.command_book.buff.main()
+                
+                # 2. 檢查寵物是不是肚子餓了
                 pet_settings = config.gui.settings.pets
-                auto_feed = pet_settings.auto_feed.get()
-                num_pets = pet_settings.num_pets.get()
-                now = time.time()
-                if auto_feed and now - last_fed > 1200 / num_pets:
-                    press(self.config['Feed pet'], 1)
-                    last_fed = now
+                if pet_settings.auto_feed.get():
+                    now = time.time()
+                    # 根據寵物數量計算餵食時間間隔
+                    if now - last_fed > 1200 / pet_settings.num_pets.get():
+                        press(self.config['Feed pet'], 1)
+                        last_fed = now
 
-                # Highlight the current Point
-                config.gui.view.routine.select(config.routine.index)
-                config.gui.view.details.display_info(config.routine.index)
-
-                # Execute next Point in the routine
+                # 3. 找出腳本裡現在該做的動作
                 element = config.routine[config.routine.index]
+                
+                # 如果偵測到「輪」(Rune)，且我們剛好在附近，就去解開它
                 if self.rune_active and isinstance(element, Point) \
                         and element.location == self.rune_closest_pos:
                     self._solve_rune(model)
+                
+                # 4. 執行動作 (移動或攻擊)
                 element.execute()
+                
+                # 前往腳本的下一個步驟
                 config.routine.step()
             else:
+                # 沒事做的時候，休息 0.01 秒，避免電腦過熱
                 time.sleep(0.01)
 
     @utils.run_if_enabled
