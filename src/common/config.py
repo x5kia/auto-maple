@@ -1,20 +1,20 @@
 """
-全域變數模組：儲存多個模組之間共享的變數。
+全域變數模組：這就像是程式的「共用筆記本」，記錄了所有模組需要知道的即時資訊。
 """
 
-# --- 常數設定 ---
-RESOURCES_DIR = 'resources'  # 資源資料夾路徑
+# --- 基本設定 ---
+RESOURCES_DIR = 'resources'  # 資源資料夾的名稱
 
-# --- 即時狀態變數 ---
-player_pos = (0, 0)    # 玩家目前在小地圖上的座標 (x, y)
-enabled = False        # 腳本開關狀態：True 代表正在運行，False 代表停止
-stage_fright = False   # 「舞台恐懼」狀態：當地圖有其他玩家時，會切換到隨機防測模式
-path = []              # 機器人目前計畫行走的移動路徑點清單
+# --- 遊戲即時狀態 ---
+player_pos = (0, 0)    # 玩家目前在畫面上的座標位置
+enabled = False        # 開關：True 代表程式正在幫你玩，False 代表停止
+stage_fright = False   # 舞台恐懼：當地圖有其他玩家時，會開啟隨機防測模式
+path = []              # 機器人計畫要走的移動路線圖
 
-# --- 核心物件引用 (由各模組初始化) ---
-routine = None         # 目前載入的「腳本」物件
-layout = None          # 目前地圖的「地形佈局」資料
-bot = None             # 機器人執行邏輯核心
-capture = None         # 畫面擷取與影像處理核心
-listener = None        # 鍵盤監聽器（處理快捷鍵）
-gui = None             # 圖形化介面物件
+# --- 核心模組引用 (這些會由程式啟動時自動填入) ---
+routine = None         # 負責處理你的動作腳本 (.csv)
+layout = None          # 負責記錄地圖的地形資料
+bot = None             # 負責執行邏輯的主機板
+capture = None         # 負責「看」遊戲畫面的眼睛
+listener = None        # 負責監聽鍵盤按鍵的耳朵
+gui = None             # 你看到的藍色菇菇視窗介面
