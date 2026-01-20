@@ -1,4 +1,10 @@
-"""An interpreter that reads and executes user-created routines."""
+"""
+[機器人核心模組]
+這是整個程式的總指揮。它負責：
+1. 載入 AI 模型 (用來看懂輪的箭頭)。
+2. 不斷檢查現在該做什麼動作。
+3. 執行腳本裡的指令。
+"""
 
 import threading
 import time
@@ -18,64 +24,100 @@ from src.common.vkeys import press, click
 from src.common.interfaces import Configurable
 
 
-# The rune's buff icon
+# 讀取「輪」解完後的 Buff 圖示，用來確認有沒有解成功
 RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 0)
 
 
-"""
-機器人核心：這是程式的「行動中心」，負責讀取你的指令並在遊戲中執行。
-"""
-# ... (前面引入部分保持不變)
-
 class Bot(Configurable):
-    # 預設按鍵設定
+    """
+    Bot 類別：負責解釋並執行你寫好的腳本。
+    """
+
+    # 預設的按鍵設定 (如果沒有讀取到設定檔會用這個)
     DEFAULT_CONFIG = {
-        'Interact': 'y',  # 與 NPC 或輪互動的按鍵
-        'Feed pet': '9'   # 餵食寵物的快捷鍵
+        'Interact': 'y',  # 採集/對話鍵 (解輪用)
+        'Feed pet': '9'   # 餵寵物鍵
     }
+
+    def __init__(self):
+        """程式啟動時會執行這裡，進行初始化。"""
+        super().__init__('keybindings')
+        config.bot = self
+
+        self.rune_active = False        # 現在是不是有輪出現？
+        self.rune_pos = (0, 0)          # 輪在哪裡？
+        self.rune_closest_pos = (0, 0)  # 離輪最近的腳本點位在哪？
+        self.submodules = []
+        self.command_book = None        # 目前載入的職業指令書
+        
+        config.routine = Routine()      # 初始化腳本管理器
+
+        self.ready = False
+        # 建立一個獨立的執行緒 (Thread) 來跑機器人，這樣才不會卡死介面
+        self.thread = threading.Thread(target=self._main)
+        self.thread.daemon = True
+
+    def start(self):
+        """按下開始後，啟動機器人的主迴圈。"""
+        self.update_submodules()
+        print('\n[~] 已啟動機器人主迴圈')
+        self.thread.start()
 
     def _main(self):
         """
-        這是程式的主要運行循環。
+        [核心迴圈]
+        這就是機器人一直在做的事情，就像人的心跳一樣不會停。
         """
-        # 第一步：載入 AI 偵測大腦 (辨識箭頭用的)
+        print('\n[~] 正在載入 AI 偵測模型 (這可能需要一點時間)...\n')
         model = detection.load_model()
-        
+        print('\n[~] AI 模型載入完成！')
+
         self.ready = True
-        last_fed = time.time()  # 紀錄上次餵食時間
+        config.listener.enabled = True
+        last_fed = time.time()  # 紀錄上次餵寵物的時間
 
         while True:
-            # 只有在「程式啟動中」且「腳本內有動作」時才執行動作
+            # 只有在「啟用中 (enabled)」且「腳本不為空」時才做事
             if config.enabled and len(config.routine) > 0:
                 
-                # 1. 執行自動放招 (Buff)
+                # 1. 執行自動放技能 (Buff)
                 self.command_book.buff.main()
                 
-                # 2. 檢查寵物是不是肚子餓了
+                # 2. 檢查寵物是不是餓了
                 pet_settings = config.gui.settings.pets
-                if pet_settings.auto_feed.get():
-                    now = time.time()
-                    # 根據寵物數量計算餵食時間間隔
-                    if now - last_fed > 1200 / pet_settings.num_pets.get():
-                        press(self.config['Feed pet'], 1)
-                        last_fed = now
+                auto_feed = pet_settings.auto_feed.get()
+                num_pets = pet_settings.num_pets.get()
+                now = time.time()
+                
+                # 如果開啟自動餵食，且時間到了 (根據寵物數量計算間隔)
+                if auto_feed and now - last_fed > 1200 / num_pets:
+                    press(self.config['Feed pet'], 1)
+                    last_fed = now
 
-                # 3. 找出腳本裡現在該做的動作
+                # 3. 在介面上高亮顯示目前執行到的步驟
+                config.gui.view.routine.select(config.routine.index)
+                config.gui.view.details.display_info(config.routine.index)
+
+                # 4. 取得這一步驟的動作 (Point)
                 element = config.routine[config.routine.index]
                 
-                # 如果偵測到「輪」(Rune)，且我們剛好在附近，就去解開它
+                # 如果有輪出現，而且我們剛好走到了負責解輪的點位
                 if self.rune_active and isinstance(element, Point) \
                         and element.location == self.rune_closest_pos:
-                    self._solve_rune(model)
+                    self._solve_rune(model) # 去解輪！
                 
-                # 4. 執行動作 (移動或攻擊)
+                # 5. 執行這個點位的動作 (移動、跳躍、攻擊...)
                 element.execute()
                 
-                # 前往腳本的下一個步驟
+                # 6. 前往腳本的下一步
                 config.routine.step()
             else:
-                # 沒事做的時候，休息 0.01 秒，避免電腦過熱
+                # 如果沒事做，休息 0.01 秒避免電腦太操勞
                 time.sleep(0.01)
+
+    # ... (後續的 _solve_rune 等函式暫時省略，先讓同事理解主迴圈即可) ...
+    # 為了保持檔案完整性，若需要完整檔案請告訴我，這裡先展示核心邏輯中文化。
+    # 建議同事在修改時，只需替換上述有中文註解的部分，保留原有的 auxiliary functions。
 
     @utils.run_if_enabled
     def _solve_rune(self, model):
